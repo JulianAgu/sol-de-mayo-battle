@@ -90,7 +90,6 @@ export class MainScene extends Phaser.Scene {
         this.physics.add.overlap(this.boss.getProjectiles(), this.player, this.handleBulletHitPlayer, undefined, this);
         this.physics.add.overlap(this.player.getProjectiles(), this.boss, this.handleBulletHitBoss, undefined, this);
 
-
     }
     private addPoints(amount: number) {
         this.score += amount;
@@ -100,9 +99,26 @@ export class MainScene extends Phaser.Scene {
         }
     }
 
-    /// Corregir la suma de puntos en disparos
-    private handleBulletHitBoss(boss: any, bullet: any) {
+    private isBossObject(obj: any): obj is Boss {
+        return !!obj && typeof obj.registerHit === 'function';
+    }
+
+    private getProjectileFromOverlap(obj1: any, obj2: any): any | null {
+        if (obj1 && typeof obj1.kill === 'function') return obj1;
+        if (obj2 && typeof obj2.kill === 'function') return obj2;
+        return null;
+    }
+
+    /// Colisión bala jugador -> boss
+    private handleBulletHitBoss(obj1: any, obj2: any) {
         console.log("¡Impacto detectado!"); // Si ves esto en la consola, la colisión funciona
+
+        const bullet = this.getProjectileFromOverlap(obj1, obj2);
+        const boss = this.isBossObject(obj1) ? obj1 : (this.isBossObject(obj2) ? obj2 : null);
+
+        if (!bullet || !boss) {
+            return;
+        }
 
         // 1. "Matamos" la bala del pool inmediatamente
         // Usamos 'as any' o el tipo correcto para acceder al método kill()
@@ -115,7 +131,10 @@ export class MainScene extends Phaser.Scene {
         // 2. Sumamos puntos
         this.addPoints(5);
 
-        // 3. Feedback visual (Opcional pero recomendado)
+        // 3. Subimos daño/acumulador del boss para escalar dificultad
+        boss.registerHit();
+
+        // 4. Feedback visual (Opcional pero recomendado)
         const b = boss as Phaser.GameObjects.Sprite;
         b.setTint(0xff0000);
         this.time.delayedCall(100, () => b.clearTint());
@@ -162,29 +181,41 @@ export class MainScene extends Phaser.Scene {
 
         // --- CORRECCIÓN AQUÍ ---
         if (this.lives <= 0) {
-            // Detenemos el timer de puntos pasivos para que no siga sumando en el limbo
-            if (this.scoreTimer) this.scoreTimer.destroy();
-
-            // Vamos a la escena de muerte pasando el score acumulado
-            this.scene.start('GameOverScene', { score: this.score });
+            this.gameOver();
         }
     }
-    private handleBulletHitPlayer(player: any, bullet: any) {
+    private handleBulletHitPlayer(bullet: any, player: any) {
+        const projectile = this.getProjectileFromOverlap(bullet, player);
+
+        if (!projectile) {
+            return;
+        }
+
         // La bala del enemigo desaparece
-        if (bullet.kill) {
-            bullet.kill();
+        if (projectile.kill) {
+            projectile.kill();
         } else {
-            bullet.destroy();
+            projectile.destroy();
         }
 
         // Llamamos al método de daño que creamos antes en el Player
         this.handlePlayerHit();
     }
 
-    update(time: number) {
-        this.player.updateLogic(this.cursors, time);
+    update(time: number, delta: number) {
+        if (this.player) {
+            this.player.updateLogic(this.cursors, time);
+        }
 
-        // Ahora le pasamos el 'time' al boss para su lógica de ráfagas
-        this.boss.updateLogic(time);
+        if (this.boss) {
+            // ERROR COMÚN: Si falta 'delta', el jefe desaparece
+            this.boss.updateLogic(time, delta);
+        }
+
+        if (this.bg) {
+            this.bg.update();
+        }
     }
+
+
 }

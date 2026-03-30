@@ -1,35 +1,39 @@
 import { Projectile } from './Projectile';
 
+/**
+ * Gestiona el pool de proyectiles y su activación física.
+ */
 export class WeaponSystem {
     private group: Phaser.Physics.Arcade.Group;
-    private lastFired = 0;
-    private readonly COOLDOWN = 200; // Milisegundos entre disparos
 
     constructor(scene: Phaser.Scene, texture: string) {
-        // Creamos un Pool de objetos para optimizar (Object Pooling)
+        // Pool de objetos para optimizar memoria
         this.group = scene.physics.add.group({
             classType: Projectile,
-            maxSize: 20, // Máximo 20 balas en pantalla
-            runChildUpdate: true // Esto permite que el update de la bala se ejecute
+            maxSize: 30, // Aumentado para soportar disparos triples
+            runChildUpdate: true 
         });
 
-        // Llenamos el pool con la textura indicada
+        // Pre-carga de proyectiles desactivados
         this.group.createMultiple({
             key: texture,
             active: false,
             visible: false,
-            quantity: 20
+            quantity: 30
         });
     }
 
-    public fire(x: number, y: number, direction: number, time: number) {
-        if (time < this.lastFired) return;
-
+    /**
+     * Activa un proyectil del pool y le asigna velocidad.
+     */
+    public fire(x: number, y: number, dirX: number, dirY: number) {
         const bullet = this.group.getFirstDead(false) as Projectile;
-
+        
         if (bullet) {
-            bullet.fire(x, y, direction * 500);
-            this.lastFired = time + this.COOLDOWN;
+            // Reinicia posición y activa física
+            bullet.fire(x, y, dirX * 500);
+            // Aplica trayectoria vertical para diagonales
+            bullet.setVelocityY(dirY * 500);
         }
     }
 
