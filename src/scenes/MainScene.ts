@@ -6,6 +6,9 @@ export class MainScene extends Phaser.Scene {
     private player!: Player;
     private boss!: Boss;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+    private score: number = 0;
+    private scoreText!: Phaser.GameObjects.Text;
+    private scoreTimer!: Phaser.Time.TimerEvent;
 
     // Propiedades de estado del juego
     private lives: number = 3; // Valor inicial por defecto
@@ -49,6 +52,7 @@ export class MainScene extends Phaser.Scene {
     create() {
         // RESET DE ESTADO: Obligamos a que las vidas vuelvan a 3 cada vez que inicia la escena
         this.lives = 3;
+        this.score = 0;
 
         const selection = this.registry.get('playerCountry') || 'AR';
         const playerTex = selection === 'AR' ? 'sun-ar' : 'sun-uy';
@@ -67,10 +71,64 @@ export class MainScene extends Phaser.Scene {
             this.cursors = this.input.keyboard.createCursorKeys();
         }
 
+        // 1. Crear el texto del Score (UI)
+        this.scoreText = this.add.text(780, 20, 'Score: 0', {
+            fontSize: '24px',
+            color: '#fff',
+            fontFamily: 'Arial' // Luego podés usar una fuente pixel art
+        }).setOrigin(1, 0);
+
+        // 2. Configurar puntos pasivos: 10 puntos cada 5 segundos (S de SOLID: Timer independiente)
+        this.scoreTimer = this.time.addEvent({
+            delay: 5000,
+            callback: () => this.addPoints(10),
+            callbackScope: this,
+            loop: true
+        });
+
         // 4. Colisiones
         this.physics.add.overlap(this.boss.getProjectiles(), this.player, this.handleBulletHitPlayer, undefined, this);
         this.physics.add.overlap(this.player.getProjectiles(), this.boss, this.handleBulletHitBoss, undefined, this);
+
+
     }
+    private addPoints(amount: number) {
+        this.score += amount;
+        // Forzamos la actualización del texto en pantalla
+        if (this.scoreText) {
+            this.scoreText.setText(`Score: ${this.score}`);
+        }
+    }
+
+    /// Corregir la suma de puntos en disparos
+    private handleBulletHitBoss(boss: any, bullet: any) {
+        console.log("¡Impacto detectado!"); // Si ves esto en la consola, la colisión funciona
+
+        // 1. "Matamos" la bala del pool inmediatamente
+        // Usamos 'as any' o el tipo correcto para acceder al método kill()
+        if (bullet.kill) {
+            bullet.kill();
+        } else {
+            bullet.destroy(); // Plan B si kill no está definido
+        }
+
+        // 2. Sumamos puntos
+        this.addPoints(5);
+
+        // 3. Feedback visual (Opcional pero recomendado)
+        const b = boss as Phaser.GameObjects.Sprite;
+        b.setTint(0xff0000);
+        this.time.delayedCall(100, () => b.clearTint());
+    }
+
+    private gameOver() {
+        // Detener el timer de puntos antes de salir
+        if (this.scoreTimer) this.scoreTimer.destroy();
+
+        // Pasamos el score a la siguiente escena mediante el objeto de datos
+        this.scene.start('GameOverScene', { score: this.score });
+    }
+
     /**
      * Crea los íconos de vida basados en el país elegido
      */
@@ -89,45 +147,38 @@ export class MainScene extends Phaser.Scene {
      * Lógica cuando el jugador recibe daño
      */
     private handlePlayerHit() {
-        // Verificación de seguridad (SOLID: Robustez)
-        if (!this.player || this.player.isInvulnerable || this.lives <= 0) return;
+        if (this.player.isInvulnerable || this.lives <= 0) return;
 
         this.lives--;
 
-        // Validamos que el grupo exista antes de pedir los hijos
+        // Actualizar UI de vidas
         if (this.lifeIcons) {
             const icons = this.lifeIcons.getChildren();
-            if (icons.length > 0) {
-                const lastIcon = icons[icons.length - 1] as Phaser.GameObjects.Image;
-                lastIcon.destroy();
-            }
+            const lastIcon = icons[icons.length - 1] as Phaser.GameObjects.Image;
+            if (lastIcon) lastIcon.destroy();
         }
 
         this.player.takeDamage();
 
+        // --- CORRECCIÓN AQUÍ ---
         if (this.lives <= 0) {
-            this.scene.start('MenuScene');
+            // Detenemos el timer de puntos pasivos para que no siga sumando en el limbo
+            if (this.scoreTimer) this.scoreTimer.destroy();
+
+            // Vamos a la escena de muerte pasando el score acumulado
+            this.scene.start('GameOverScene', { score: this.score });
         }
     }
-
     private handleBulletHitPlayer(player: any, bullet: any) {
         // La bala del enemigo desaparece
-        bullet.kill();
+        if (bullet.kill) {
+            bullet.kill();
+        } else {
+            bullet.destroy();
+        }
 
         // Llamamos al método de daño que creamos antes en el Player
         this.handlePlayerHit();
-    }
-
-    private handleBulletHitBoss(boss: any, bullet: any) {
-        bullet.kill(); // La bala vuelve al pool
-        (boss as Boss).setTint(0xff0000);
-        this.time.delayedCall(100, () => (boss as Boss).clearTint());
-        // Aquí podrías sumar puntos
-    }
-
-    private gameOver() {
-        console.log("GAME OVER");
-        this.scene.start('MenuScene'); // Reiniciar o ir a pantalla de puntajes
     }
 
     update(time: number) {
