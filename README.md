@@ -1,4 +1,4 @@
-# Sol de Mayo
+# Sol de mayo Galactic Battle 
 
 Juego 2D arcade hecho con Phaser + TypeScript sobre Vite.
 
